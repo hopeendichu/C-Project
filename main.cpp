@@ -1,68 +1,175 @@
-#include <iostream>
-#include <fstream>  // For file handling
-#include <sstream>  // For parsing the file line by line
-#include <vector>   // To store data
-using namespace std;
 
-// Define a struct to hold team data
+#include <iostream>
+#include <vector>
+#include <string>
+#include <fstream>
+#include <algorithm>  // for shuffle
+#include <random>     // for random generator
+
+
+// Structure for a Team
 struct Team {
-    string name;
-    string localTown;
-    string stadium;
+    std::string name;
+    std::string town;
+    std::string stadium;
 };
 
+// Structure for a Match
+struct Match {
+    Team home;
+    Team away;
+    bool derby;  // Local town match flag
+    int leg;     // 1 for first leg, 2 for second leg
+};
+
+// Structure for a Weekend
+struct Weekend {
+    Match matches[2];  // 2 matches per weekend
+};
+
+// Utility class for generating and managing fixtures
+class Util {
+private:
+    bool havePlayedBefore(Team a, Team b);
+
+public:
+    std::vector<Team> teams;
+    std::vector<Match> matches;
+    std::vector<Weekend> weekendGames;
+
+    void readFile(std::string filename);
+    void writeFile(std::string filename);
+
+    void createMatches();
+    void createWeekendGames();
+    void shuffleMatches();
+    void sortMatches();
+
+    void displayFixtures();
+    void displayMatches();
+    void printTeams();
+    int getFixturesCount();
+    int getTeamCount();
+};
+
+// Check if teams have played each other before
+bool Util::havePlayedBefore(Team a, Team b) {
+    for (auto match : matches) {
+        if ((match.home.name == a.name && match.away.name == b.name) ||
+            (match.home.name == b.name && match.away.name == a.name)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// Read teams from a CSV file
+void Util::readFile(std::string filename) {
+    std::ifstream file(filename);
+    if (file.is_open()) {
+        std::string name, town, stadium;
+        while (file >> name >> town >> stadium) {
+            teams.push_back({name, town, stadium});
+        }
+        file.close();
+    }
+}
+
+// Write fixtures to a CSV file
+void Util::writeFile(std::string filename) {
+    std::ofstream file(filename);
+    if (file.is_open()) {
+        for (const auto& weekend : weekendGames) {
+            for (const auto& match : weekend.matches) {
+                file << match.home.name << " vs " << match.away.name << ", "
+                     << "Leg " << match.leg << "\n";
+            }
+        }
+        file.close();
+    }
+}
+
+// Create match pairings for teams
+void Util::createMatches() {
+    for (size_t i = 0; i < teams.size(); ++i) {
+        for (size_t j = i + 1; j < teams.size(); ++j) {
+            Match match1 = {teams[i], teams[j], teams[i].town == teams[j].town, 1};
+            Match match2 = {teams[j], teams[i], teams[i].town == teams[j].town, 2};
+            matches.push_back(match1);
+            matches.push_back(match2);
+        }
+    }
+}
+
+// Shuffle matches using Fisher-Yates algorithm
+void Util::shuffleMatches() {
+    std::random_device rd;
+    std::mt19937 g(rd());
+    std::shuffle(matches.begin(), matches.end(), g);
+}
+
+// Sort matches by leg (1 first, then 2)
+void Util::sortMatches() {
+    std::sort(matches.begin(), matches.end(), [](Match a, Match b) {
+        return a.leg < b.leg;
+    });
+}
+
+// Create weekend games (2 matches per weekend)
+void Util::createWeekendGames() {
+    for (size_t i = 0; i < matches.size(); i += 2) {
+        Weekend weekend = {matches[i], matches[i + 1]};
+        weekendGames.push_back(weekend);
+    }
+}
+
+// Display fixtures on the console
+void Util::displayFixtures() {
+    for (const auto& weekend : weekendGames) {
+        for (const auto& match : weekend.matches) {
+            std::cout << match.home.name << " vs " << match.away.name
+                      << " (Leg " << match.leg << ")\n";
+        }
+        std::cout << "----------\n";
+    }
+}
+
+// Display matches on the console
+void Util::displayMatches() {
+    for (const auto& match : matches) {
+        std::cout << match.home.name << " vs " << match.away.name
+                  << " (Leg " << match.leg << ")\n";
+    }
+}
+
+// Display teams on the console
+void Util::printTeams() {
+    for (const auto& team : teams) {
+        std::cout << team.name << " from " << team.town << " at " << team.stadium << "\n";
+    }
+}
+
+// Get the number of fixtures
+int Util::getFixturesCount() {
+    return matches.size();
+}
+
+// Get the number of teams
+int Util::getTeamCount() {
+    return teams.size();
+}
+
+// Main function
 int main() {
-    string filename;
+    Util util;
+    util.readFile("teams.csv");  // Read teams from a file
+    util.createMatches();        // Generate match pairings
+    util.shuffleMatches();       // Shuffle the matches
+    util.sortMatches();          // Sort matches by leg
+    util.createWeekendGames();   // Create weekend games
 
-    // Ask the user to input the file name
-    cout << "Enter the CSV filename (with extension): ";
-    cin >> filename;
-
-    cout << "Trying to open file: " << filename << endl;  // Debugging output
-
-    // Open the user-specified CSV file
-    ifstream file(filename);
-
-    // Check if the file opened successfully
-    if (!file.is_open()) {
-        cerr << "Error: Could not open file " << filename << endl;
-        return 1;
-    }
-
-    // If the file opened successfully, output a message
-    cout << "File opened successfully!" << endl;
-
-    string line;
-    vector<Team> teams;  // Vector to hold the data for each team
-
-    // Read and print the contents of the file to ensure it's working
-    cout << "Reading file contents:" << endl;
-
-    // Skip the first line (header)
-    getline(file, line);  // Read and discard the header line
-
-    // Parse each line of the file
-    while (getline(file, line)) {
-        stringstream ss(line);  // Create a string stream for each line
-        Team team;              // Temporary variable to hold one team's info
-
-        // Extract each field separated by commas
-        getline(ss, team.name, ',');       // Get team name
-        getline(ss, team.localTown, ',');  // Get local town
-        getline(ss, team.stadium, ',');    // Get stadium
-
-        teams.push_back(team);  // Add the team data to the main teams vector
-    }
-
-    // Use traditional for loop with indexes
-    for (size_t i = 0; i < teams.size(); i++) {
-        // Output the parsed data using index
-        cout << "Team #" << (i + 1) << ": " << endl;
-        cout << "Team Name: " << teams[i].name << endl;
-        cout << "Local Town: " << teams[i].localTown << endl;
-        cout << "Stadium: " << teams[i].stadium << endl;
-        cout << "-----------------------------" << endl;
-    }
+    util.displayFixtures();      // Display fixtures on the console
+    util.writeFile("fixtures.csv");  // Write fixtures to a CSV file
 
     return 0;
 }
